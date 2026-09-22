@@ -1,0 +1,88 @@
+name: Check and publish
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          # wbn-sign needs Node 22.13 or later.
+          node-version: '22'
+      - name: Install the Node packages
+        run: npm install && cd web && npm install
+      - name: Check the formatting and the types
+        run: make check
+      - name: Run the SSH tests against a local sshd
+        run: make test
+
+  build:
+    name: Build the site
+    needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The key gives the application its identity. Without the secret the
+      # build makes an unsigned bundle, which Chrome cannot install.
+      - name: Write the signing key
+        env:
+          IWA_SIGNING_KEY: ${{ secrets.IWA_SIGNING_KEY }}
+        run: |
+          if [ -n "${IWA_SIGNING_KEY}" ]; then
+            printf '%s\n' "${IWA_SIGNING_KEY}" > private.pem
+            chmod 600 private.pem
+            echo "The signing key is in place."
+          else
+            echo "::warning::IWA_SIGNING_KEY is not set. The bundle will not be signed."
+          fi
+
+      - name: Build site/
+        run: make pages
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f private.pem
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Publish to GitHub Pages
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

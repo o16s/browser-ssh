@@ -71,7 +71,10 @@ private.pem:
 
 key: private.pem
 
-bundle: build node_modules private.pem
+# bundle does not depend on private.pem. A missing key must give a warning and
+# an unsigned bundle, never a new key: a new key gives the application a new
+# Web Bundle ID, and Chrome then treats it as a different application.
+bundle: build node_modules
 	node scripts/bundle.mjs
 
 pages: bundle
