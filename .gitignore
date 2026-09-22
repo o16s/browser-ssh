@@ -1,0 +1,14 @@
+# Build products
+dist/
+site/
+web/public/ssh.wasm
+web/public/wasm_exec.js
+web/public/icon.png
+node_modules/
+
+# The signing key gives the application its identity. Never commit it.
+private.pem
+*.pem
+
+# Test harness
+scripts/test/authorized_keys
