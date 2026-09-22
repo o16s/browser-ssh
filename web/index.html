@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      This is the policy that Chrome applies to every Isolated Web App. It is
+      repeated here so that a test in a normal browser tab fails in the same
+      way as the installed application.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="base-uri 'none'; default-src 'self'; object-src 'none'; frame-src 'self' https: blob: data:; connect-src 'self' https: wss: blob: data:; script-src 'self' 'wasm-unsafe-eval'; img-src 'self' https: blob: data:; media-src 'self' https: blob: data:; font-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; require-trusted-types-for 'script';"
+    />
+    <title>LAN SSH</title>
+    <link rel="icon" href="/icon.png" />
+    <!-- The Go runtime glue. It comes from the Go installation without edits. -->
+    <script src="/wasm_exec.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -52,3 +52,12 @@ SSH_TEST_ADDR="${TEST_HOST}:${TEST_PORT}" \
 SSH_TEST_USER="root" \
 SSH_TEST_KEY="${WORK}/id_ed25519" \
   go test ./... -count=1 -v -timeout 180s
+
+echo ""
+echo "==> Run the WebAssembly bridge against the same sshd"
+WASM="${ROOT}/web/public/ssh.wasm"
+if [ ! -f "${WASM}" ]; then
+  echo "  Build the module first."
+  (cd "${ROOT}/go" && GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" -o "${WASM}" ./wasm)
+fi
+node "${HERE}/wasm-bridge.cjs" "${WASM}" "${TEST_HOST}" "${TEST_PORT}" root "${WORK}/id_ed25519"

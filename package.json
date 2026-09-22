@@ -1,0 +1,11 @@
+{
+  "name": "browser-ssh",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Build scripts for the LAN SSH Isolated Web App.",
+  "devDependencies": {
+    "wbn": "^0.0.9",
+    "wbn-sign": "^0.3.1"
+  }
+}

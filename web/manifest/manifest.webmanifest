@@ -1,0 +1,29 @@
+{
+  "id": "/",
+  "name": "LAN SSH",
+  "short_name": "LAN SSH",
+  "description": "An SSH terminal for hosts on the local network. It uses the Direct Sockets API of Chrome.",
+  "version": "1.0.0",
+  "start_url": "/index.html",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "isolated_storage": true,
+  "update_manifest_url": "https://o16s.github.io/browser-ssh/update.json",
+  "permissions_policy": {
+    "cross-origin-isolated": ["self"],
+    "direct-sockets": ["self"],
+    "direct-sockets-private": ["self"],
+    "local-network": ["self"],
+    "loopback-network": ["self"]
+  },
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

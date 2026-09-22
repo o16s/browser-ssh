@@ -1,0 +1,195 @@
+:root {
+  --bg: #0b0d12;
+  --panel: #161922;
+  --line: #262b38;
+  --text: #d7dae0;
+  --muted: #8b93a5;
+  --accent: #4f9cf9;
+  --danger: #f97066;
+  --ok: #4ade80;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, sans-serif;
+}
+
+#root,
+.app {
+  height: 100vh;
+}
+
+.app {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 10px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.field label {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+input,
+textarea,
+button {
+  font: inherit;
+  color: var(--text);
+  background: #0e1117;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 6px 8px;
+}
+
+input:focus,
+textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+input[name='host'] {
+  width: 160px;
+}
+input[name='port'] {
+  width: 70px;
+}
+input[name='user'] {
+  width: 110px;
+}
+input[name='passphrase'] {
+  width: 150px;
+}
+
+button {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06101f;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.ghost {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--text);
+  font-weight: 400;
+}
+
+.keyrow {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  padding: 0 12px 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.keyrow .field {
+  flex: 1;
+}
+
+textarea {
+  width: 100%;
+  min-height: 62px;
+  resize: vertical;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.terminal {
+  min-height: 0;
+  height: 100%;
+  padding: 6px;
+  background: #11131a;
+}
+
+.status {
+  padding: 6px 12px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.status.error {
+  color: var(--danger);
+}
+.status.ok {
+  color: var(--ok);
+}
+
+.warning {
+  padding: 8px 12px;
+  background: #3a1d1a;
+  color: #ffb4a8;
+  border-bottom: 1px solid #5a2a24;
+  font-size: 13px;
+}
+
+.dialog {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.dialog .card {
+  width: min(520px, 92vw);
+  padding: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.dialog h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.dialog code {
+  display: block;
+  margin: 10px 0;
+  padding: 8px;
+  background: #0e1117;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.dialog .buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
