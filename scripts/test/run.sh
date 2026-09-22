@@ -61,3 +61,30 @@ if [ ! -f "${WASM}" ]; then
   (cd "${ROOT}/go" && GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" -o "${WASM}" ./wasm)
 fi
 node "${HERE}/wasm-bridge.cjs" "${WASM}" "${TEST_HOST}" "${TEST_PORT}" root "${WORK}/id_ed25519"
+
+# The browser test needs the relay and a Chromium from Playwright. Both are
+# optional, so a machine without them still runs everything above.
+if [ "${SKIP_BROWSER:-}" = "1" ]; then
+  echo ""
+  echo "==> Skip the browser test (SKIP_BROWSER=1)"
+  exit 0
+fi
+if [ ! -x "${ROOT}/bin/browser-ssh" ]; then
+  echo ""
+  echo "==> Skip the browser test. Run make relay first."
+  exit 0
+fi
+
+echo ""
+echo "==> Run the web application in a browser, through the relay"
+RELAY_PORT="${RELAY_PORT:-9433}"
+"${ROOT}/bin/browser-ssh" -addr "127.0.0.1:${RELAY_PORT}" >"${WORK}/relay.log" 2>&1 &
+RELAY_PID=$!
+relay_cleanup() { kill "${RELAY_PID}" 2>/dev/null || true; }
+trap 'relay_cleanup; cleanup' EXIT
+for i in $(seq 1 40); do
+  if (exec 3<>"/dev/tcp/127.0.0.1/${RELAY_PORT}") 2>/dev/null; then exec 3>&- 3<&-; break; fi
+  sleep 0.25
+done
+cd "${ROOT}"
+node "${HERE}/browser.mjs" "http://localhost:${RELAY_PORT}" "${TEST_HOST}" "${TEST_PORT}" root "${WORK}/id_ed25519"

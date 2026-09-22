@@ -140,6 +140,11 @@ textarea {
   font-size: 12px;
 }
 
+.status .transport {
+  float: right;
+  color: #6b7280;
+}
+
 .status.error {
   color: var(--danger);
 }

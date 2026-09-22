@@ -1,13 +1,33 @@
 // The bridge between the page and the Go SSH core.
 //
-// The split of work is fixed: JavaScript owns the TCPSocket, Go owns the SSH
-// protocol. Go never opens a socket, and JavaScript never looks at SSH bytes.
+// The split of work is fixed: JavaScript owns the transport, Go owns the SSH
+// protocol. Go never opens a network connection, and JavaScript never looks at
+// SSH bytes.
+//
+// There are two transports, because a web page cannot open a TCP socket:
+//
+//  1. TCPSocket, the Direct Sockets API. It exists only in an installed
+//     Isolated Web App. It reaches port 22 with nothing in between.
+//  2. A WebSocket to the relay that served this page. The relay is a byte
+//     pipe. It carries encrypted SSH bytes, so it never sees the private key
+//     or any plaintext.
+//
+// The page and the relay share one origin, so Chrome finds no mixed content
+// and asks for no Local Network Access permission.
 
 const core = globalThis as unknown as SSHCore;
 
-/** True when the page runs where the Direct Sockets API exists. */
-export function hasDirectSockets(): boolean {
-  return typeof TCPSocket === 'function';
+export type TransportKind = 'direct-sockets' | 'relay';
+
+/** The transport that this page will use. */
+export function transportKind(): TransportKind {
+  return typeof TCPSocket === 'function' ? 'direct-sockets' : 'relay';
+}
+
+/** A byte stream to the remote host, in one direction each way. */
+interface Transport {
+  send(bytes: Uint8Array): void;
+  close(): void;
 }
 
 let corePromise: Promise<void> | null = null;
@@ -15,8 +35,8 @@ let corePromise: Promise<void> | null = null;
 /**
  * Loads the WebAssembly module one time.
  *
- * The Go program never returns, so the promise of go.run() is not awaited.
- * The module reports that its functions are ready through __sshCoreReady.
+ * The Go program never returns, so the promise of go.run() is not awaited. The
+ * module reports that its functions are ready through __sshCoreReady.
  */
 export function loadCore(): Promise<void> {
   if (corePromise) {
@@ -32,7 +52,7 @@ export function loadCore(): Promise<void> {
       resolve();
     };
     const go = new Go();
-    WebAssembly.instantiateStreaming(fetch('/ssh.wasm'), go.importObject)
+    WebAssembly.instantiateStreaming(fetch('ssh.wasm'), go.importObject)
       .then((result) => {
         // This promise settles only when the Go program exits, and it never
         // exits. An await here would wait for ever.
@@ -44,6 +64,128 @@ export function loadCore(): Promise<void> {
       });
   });
   return corePromise;
+}
+
+/** Opens a TCP socket with the Direct Sockets API of Chrome. */
+async function openDirectSocket(
+  host: string,
+  port: number,
+  onData: (bytes: Uint8Array) => void,
+  onClose: (reason: string) => void,
+): Promise<Transport> {
+  const socket = new TCPSocket(host, port);
+  const { readable, writable } = await socket.opened;
+  const writer = writable.getWriter();
+
+  // Every write returns a promise. The writes are chained so that the bytes
+  // reach the remote host in the order that Go produced them.
+  let chain: Promise<void> = Promise.resolve();
+  let open = true;
+
+  void (async () => {
+    const reader = readable.getReader();
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (value) {
+          onData(value);
+        }
+        if (done) {
+          break;
+        }
+      }
+      onClose('');
+    } catch (error: unknown) {
+      onClose(String(error));
+    } finally {
+      reader.releaseLock();
+    }
+  })();
+
+  return {
+    send: (bytes) => {
+      if (!open) {
+        return;
+      }
+      chain = chain.then(
+        () => writer.write(bytes),
+        () => undefined,
+      );
+    },
+    close: () => {
+      if (!open) {
+        return;
+      }
+      open = false;
+      chain = chain.then(
+        () => {
+          writer.releaseLock();
+          return socket.close().catch(() => undefined);
+        },
+        () => undefined,
+      );
+    },
+  };
+}
+
+/** Opens a WebSocket to the relay that served this page. */
+function openRelaySocket(
+  host: string,
+  port: number,
+  onData: (bytes: Uint8Array) => void,
+  onClose: (reason: string) => void,
+): Promise<Transport> {
+  const base = new URL('tcp', window.location.href);
+  base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
+  base.searchParams.set('host', host);
+  base.searchParams.set('port', String(port));
+
+  const socket = new WebSocket(base);
+  socket.binaryType = 'arraybuffer';
+
+  return new Promise<Transport>((resolve, reject) => {
+    let open = false;
+
+    socket.onopen = () => {
+      open = true;
+      resolve({
+        // A WebSocket keeps the order of the messages, so no queue is needed.
+        send: (bytes) => {
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(bytes);
+          }
+        },
+        close: () => socket.close(),
+      });
+    };
+    socket.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+      onData(new Uint8Array(event.data));
+    };
+    socket.onclose = (event: CloseEvent) => {
+      if (!open) {
+        // The relay refuses a target that is not on a local network, and it
+        // refuses a page that it did not serve. Both end here.
+        reject(
+          new Error(
+            event.reason === ''
+              ? `the relay did not accept the connection to ${host}:${port}`
+              : event.reason,
+          ),
+        );
+        return;
+      }
+      onClose(event.wasClean ? '' : event.reason);
+    };
+    socket.onerror = () => {
+      if (!open) {
+        reject(
+          new Error(
+            'the relay did not answer. Start it with "make serve", then open the page that it serves.',
+          ),
+        );
+      }
+    };
+  });
 }
 
 export interface ConnectParams {
@@ -75,62 +217,21 @@ export interface Connection {
 const encoder = new TextEncoder();
 
 /**
- * Opens a TCP socket, then starts an SSH session on it.
+ * Opens a transport to the host, then starts an SSH session on it.
  *
- * The returned promise settles when the socket is open. The shell is ready
+ * The returned promise settles when the transport is open. The shell is ready
  * later, through the onReady callback.
  */
 export async function connect(params: ConnectParams): Promise<Connection> {
-  if (!hasDirectSockets()) {
-    throw new Error(
-      'TCPSocket is not available. The page must run as an installed Isolated Web App.',
-    );
-  }
   await loadCore();
 
-  const socket = new TCPSocket(params.host, params.port);
-  const { readable, writable } = await socket.opened;
+  const toGo = (bytes: Uint8Array) => core.sshSocketData(bytes);
+  const endedInGo = (reason: string) => core.sshSocketClosed(reason);
 
-  const writer = writable.getWriter();
-  // Every write returns a promise. The writes are chained so that the bytes
-  // reach the remote host in the order that Go produced them.
-  let writeChain: Promise<void> = Promise.resolve();
-  let socketOpen = true;
-
-  const closeSocket = () => {
-    if (!socketOpen) {
-      return;
-    }
-    socketOpen = false;
-    writeChain = writeChain.then(
-      () => {
-        writer.releaseLock();
-        return socket.close().catch(() => undefined);
-      },
-      () => undefined,
-    );
-  };
-
-  // Read from the socket and give every block to Go.
-  void (async () => {
-    const reader = readable.getReader();
-    try {
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (value) {
-          core.sshSocketData(value);
-        }
-        if (done) {
-          break;
-        }
-      }
-      core.sshSocketClosed('');
-    } catch (error: unknown) {
-      core.sshSocketClosed(String(error));
-    } finally {
-      reader.releaseLock();
-    }
-  })();
+  const transport =
+    transportKind() === 'direct-sockets'
+      ? await openDirectSocket(params.host, params.port, toGo, endedInGo)
+      : await openRelaySocket(params.host, params.port, toGo, endedInGo);
 
   core.sshConnect({
     host: params.host,
@@ -140,25 +241,17 @@ export async function connect(params: ConnectParams): Promise<Connection> {
     passphrase: params.passphrase,
     cols: params.cols,
     rows: params.rows,
-    onSocketWrite: (bytes: Uint8Array) => {
-      if (!socketOpen) {
-        return;
-      }
-      writeChain = writeChain.then(
-        () => writer.write(bytes),
-        () => undefined,
-      );
-    },
-    onSocketClose: closeSocket,
+    onSocketWrite: (bytes: Uint8Array) => transport.send(bytes),
+    onSocketClose: () => transport.close(),
     onData: params.onData,
     onHostKey: params.onHostKey,
     onReady: params.onReady,
     onError: (message: string, code: string) => {
-      closeSocket();
+      transport.close();
       params.onError(message, code);
     },
     onClose: (message: string) => {
-      closeSocket();
+      transport.close();
       params.onClose(message);
     },
   });

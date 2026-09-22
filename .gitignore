@@ -12,3 +12,8 @@ private.pem
 
 # Test harness
 scripts/test/authorized_keys
+
+# The relay binary and the built files that it carries
+bin/
+go/relay/assets/*
+!go/relay/assets/.gitkeep

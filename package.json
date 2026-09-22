@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Build scripts for the LAN SSH Isolated Web App.",
   "devDependencies": {
+    "playwright": "^1.63.0",
     "wbn": "^0.0.9",
     "wbn-sign": "^0.3.1"
   }

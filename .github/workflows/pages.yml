@@ -31,7 +31,11 @@ jobs:
         run: npm install && cd web && npm install
       - name: Check the formatting and the types
         run: make check
-      - name: Run the SSH tests against a local sshd
+      - name: Build the relay, which the browser test needs
+        run: make relay
+      - name: Install a browser for the browser test
+        run: npx playwright install --with-deps chromium
+      - name: Run every test against a local sshd
         run: make test
 
   build:

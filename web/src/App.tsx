@@ -3,7 +3,7 @@ import { TerminalView, type TerminalHandle } from './Terminal';
 import {
   acceptHostKey,
   connect,
-  hasDirectSockets,
+  transportKind,
   type Connection,
 } from './ssh';
 
@@ -31,7 +31,13 @@ export function App() {
   // Accepted fingerprints live in memory only. A restart asks again.
   const accepted = useRef(new Set<string>());
 
-  const socketsAvailable = hasDirectSockets();
+  // Two transports reach port 22. The Direct Sockets API needs an installed
+  // Isolated Web App. The relay is the program that served this page.
+  const transport = transportKind();
+  const transportName =
+    transport === 'direct-sockets'
+      ? 'direct socket (Isolated Web App)'
+      : `relay at ${window.location.host}`;
 
   const report = (text: string, isError = false) => {
     setMessage(text);
@@ -126,12 +132,6 @@ export function App() {
   return (
     <div className="app">
       <div>
-        {!socketsAvailable && (
-          <div className="warning">
-            TCPSocket is not available on this page. Install the application as an
-            Isolated Web App. See README.md.
-          </div>
-        )}
         <div className="bar">
           <div className="field">
             <label htmlFor="host">Host</label>
@@ -209,6 +209,7 @@ export function App() {
 
       <div className={`status${failed ? ' error' : status === 'connected' ? ' ok' : ''}`}>
         {message}
+        <span className="transport">Transport: {transportName}</span>
       </div>
 
       {question && (

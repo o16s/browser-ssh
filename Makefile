@@ -2,6 +2,8 @@
 #
 #   make build    Build dist/ (the installable application)
 #   make bundle   Sign dist/ into dist/app.swbn
+#   make serve    Build the relay and run it. This is the usual way to use it.
+#   make relay    Build the relay binary into bin/browser-ssh
 #   make dev      Serve dist/ on 0.0.0.0:9432 for the proxy-mode install
 #   make test     Run the Go SSH core against a local sshd in Docker
 #   make pages    Build site/ for GitHub Pages
@@ -14,7 +16,7 @@ WEB_SOURCES := $(shell find web/src -type f) web/index.html web/vite.config.ts
 DEV_HOST ?= 0.0.0.0
 DEV_PORT ?= 9432
 
-.PHONY: help all build bundle dev test key icon clean pages check
+.PHONY: help all build bundle dev test key icon clean pages check relay serve relay-all
 
 help:
 	@sed -n 's/^#   //p' Makefile
@@ -60,6 +62,41 @@ build: web/node_modules web/public/ssh.wasm web/public/wasm_exec.js web/public/i
 	@echo "dist/ is ready:"
 	@cd dist && find . -type f | sort | sed 's/^\./  /'
 
+# --- the relay -------------------------------------------------------------
+
+# The relay serves the web application and turns a WebSocket into a TCP
+# connection. A web page cannot open a TCP socket, so this program is the way
+# to reach port 22 without an Isolated Web App. The built application goes
+# inside the binary, so one file is everything.
+RELAY_ASSETS := go/relay/assets
+
+relay: bin/browser-ssh
+
+bin/browser-ssh: build $(GO_SOURCES)
+	rm -rf $(RELAY_ASSETS)
+	mkdir -p $(RELAY_ASSETS) bin
+	cp -r dist/. $(RELAY_ASSETS)/
+	rm -f $(RELAY_ASSETS)/app.swbn $(RELAY_ASSETS)/update.json
+	touch $(RELAY_ASSETS)/.gitkeep
+	cd go && go build -trimpath -ldflags="-s -w" -o ../bin/browser-ssh ./relay
+	@ls -lh bin/browser-ssh
+
+serve: relay
+	./bin/browser-ssh -addr $(DEV_HOST):$(DEV_PORT)
+
+# The binaries that the GitHub Pages site offers.
+relay-all: build
+	rm -rf $(RELAY_ASSETS)
+	mkdir -p $(RELAY_ASSETS) bin
+	cp -r dist/. $(RELAY_ASSETS)/
+	rm -f $(RELAY_ASSETS)/app.swbn $(RELAY_ASSETS)/update.json
+	touch $(RELAY_ASSETS)/.gitkeep
+	cd go && GOOS=linux  GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../bin/browser-ssh-linux-amd64   ./relay
+	cd go && GOOS=linux  GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o ../bin/browser-ssh-linux-arm64   ./relay
+	cd go && GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o ../bin/browser-ssh-macos-arm64   ./relay
+	cd go && GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../bin/browser-ssh-windows-amd64.exe ./relay
+	@ls -lh bin/
+
 # --- signing and packaging -------------------------------------------------
 
 # The signing key gives the application its identity. A new key gives a new
@@ -77,7 +114,7 @@ key: private.pem
 bundle: build node_modules
 	node scripts/bundle.mjs
 
-pages: bundle
+pages: bundle relay-all
 	node scripts/pages.mjs
 
 # --- run and test ----------------------------------------------------------
@@ -95,5 +132,6 @@ check: web/node_modules
 	cd web && npm run typecheck
 
 clean:
-	rm -rf dist site
+	rm -rf dist site bin
+	rm -rf $(RELAY_ASSETS)
 	rm -f web/public/ssh.wasm web/public/wasm_exec.js web/public/icon.png
